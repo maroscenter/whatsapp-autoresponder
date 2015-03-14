@@ -1,2 +1,2 @@
 # whatsapp-autoresponder
-Quick and dirty prototype for a WhatsApp autoresponder based on yowsup2.
+Quick and dirty prototype for a WhatsApp auto responder based on yowsup2.
