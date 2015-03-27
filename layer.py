@@ -1,78 +1,83 @@
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
+
+import json
+import os
+from ConfigParser import SafeConfigParser
+import sys
 
 from yowsup.layers.interface import YowInterfaceLayer, ProtocolEntityCallback
 from yowsup.layers.protocol_messages.protocolentities import TextMessageProtocolEntity
 from yowsup.layers.protocol_receipts.protocolentities import OutgoingReceiptProtocolEntity
 from yowsup.layers.protocol_acks.protocolentities import OutgoingAckProtocolEntity
+
 import log
-import json
 
 
 class WaarLayer(YowInterfaceLayer):
-    BLOCK_FILE = "blocklist.json"
-    LOGGER = log.init_logger('root')
-    LOGGER.info("[RESPONDER STARTED]")
+    logger = log.init_logger(__name__)
+    config_parser = SafeConfigParser()
+    config_parser.read(os.path.join(sys.path[0], "waar.cfg"))
+
+    block_file = config_parser.get("path", "blockfile")
+    logger.info("[RESPONDER STARTED]")
 
     @ProtocolEntityCallback("message")
-    def onMessage(self, message):
+    def on_message(self, message):
+        # send receipt otherwise we keep receiving the same message over and over
         if True:
-            if not self.isSenderBlocked(message):
-                self.LOGGER.info(
-                    "[MESSAGE RECEIVED] [{0}] {1}".format(message.getNotify(), message.getBody()))
-                self.sendReceipt(message)
-                self.sendResponse(message)
+            if not self.is_sender_blocked(message):
+                self.logger.info("[MESSAGE RECEIVED] [%s] %s", message.getNotify(),
+                                 message.getBody())
+                self.send_receipt(message)
+                self.send_response(message)
             else:
-                self.LOGGER.info("[MESSAGE RECEIVED] [IS BLOCKED] [{0}] {1}".format(message.getNotify(),
-                                                                                    message.getBody()))
-                self.sendReceipt(message)
+                self.logger.info("[MESSAGE RECEIVED] [IS BLOCKED] [%s] %s", message.getNotify(),
+                                 message.getBody())
+                self.send_receipt(message)
 
-    def sendResponse(self, recipient):
-        response = self.writeResponseMessageBody(recipient.getNotify())
+    def send_response(self, recipient):
+        # Enter your response here
+        response = "Hello {0}, this is an automated response!".format(recipient.getNotify())
         outgoingMessageProtocolEntity = TextMessageProtocolEntity(response, to=recipient.getFrom())
         self.toLower(outgoingMessageProtocolEntity)
-        self.LOGGER.info(
-            "[MESSAGE SENT] [{0}] {1}".format(recipient.getNotify(), response))
+        self.logger.info("[MESSAGE SENT] [%s] %s", recipient.getNotify(), response)
 
-    def sendReceipt(self, recipient):
+    def send_receipt(self, recipient):
         receipt = OutgoingReceiptProtocolEntity(recipient.getId(), recipient.getFrom())
         self.toLower(receipt)
 
     @ProtocolEntityCallback("receipt")
-    def onReceipt(self, entity):
+    def on_receipt(self, entity):
         ack = OutgoingAckProtocolEntity(entity.getId(), "receipt", "delivery")
         self.toLower(ack)
 
-    def writeResponseMessageBody(self, name):
-        response = "ENTER YOUR RESPONSE HERE!"
-        return response
-
-
     # checks if the auto response has already been sent to a group or a single contact
-    def isSenderBlocked(self, message):
-        blocklist = self.init_block_list()
-        isBlocked = False
+    def is_sender_blocked(self, message):
+        block_list = self.get_block_list()
+        is_blocked = False
         # check if the message comes from a group
         if "@g.us" in message.getFrom():
             sender = message.getFrom().split("-")[1]
         else:
             sender = message.getFrom()
 
-        if sender in blocklist:
-            isBlocked = True
-            return isBlocked
+        if sender in block_list:
+            is_blocked = True
+            return is_blocked
         # add sender to the blocklist
-        blocklist.append(sender)
-        with open(self.BLOCK_FILE, "w") as f:
-            json.dump(blocklist, f)
-        self.LOGGER.info("[ADDED TO BLOCKLIST] {0}".format(sender))
-        self.LOGGER.info("[BLOCKLIST :] {0}".format(blocklist))
+        block_list.append(sender)
+        with open(self.block_file, "w") as block_file:
+            json.dump(block_list, block_file)
+        self.logger.info("[ADDED TO BLOCKLIST] %s", sender)
+        self.logger.info("[BLOCKLIST :] %s", block_list)
 
-        return isBlocked
+        return is_blocked
 
-    def init_block_list(self):
+    def get_block_list(self):
         try:
-            blocklist = json.loads(open(self.BLOCK_FILE).read())
+            block_list = json.loads(open(self.block_file).read())
         except (IOError, ValueError):
-            open(self.BLOCK_FILE, "w").close()
-            blocklist = []
-        return blocklist
+            open(self.block_file, "w").close()
+            block_list = []
+        return block_list
